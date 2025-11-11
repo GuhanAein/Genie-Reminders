@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Genie",
+    "slug": "gemini-reminder",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.genie.app"
+    },
+    "android": {
+      "package": "com.genie.app",
+      "permissions": [
+        "NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED",
+        "SCHEDULE_EXACT_ALARM"
+      ]
+    },
+    "plugins": [
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "60010b28-5dec-41dc-8051-59ac86fe0b39"
+      }
+    }
+  }
+}
