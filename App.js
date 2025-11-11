@@ -23,7 +23,7 @@ export default function App() {
       const keyExists = await hasGeminiKey();
       
       if (!keyExists) {
-        const defaultKey = 'AIzaSyC_8rNX9aV8ycqync2YtH3pOMCqwvjm3KQ';
+        const defaultKey = 'AIzaSyC_8rNxxxxxxxxxxxxxxxxxxx';
         await saveGeminiKey(defaultKey);
         Alert.alert(
           '🧞 Welcome to Genie!',
