@@ -10,18 +10,30 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.genie.app"
+      "bundleIdentifier": "com.genie.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Allow Genie to access your microphone for voice commands."
+      }
     },
     "android": {
       "package": "com.genie.app",
       "permissions": [
         "NOTIFICATIONS",
         "RECEIVE_BOOT_COMPLETED",
-        "SCHEDULE_EXACT_ALARM"
+        "SCHEDULE_EXACT_ALARM",
+        "RECORD_AUDIO"
       ]
     },
     "plugins": [
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {

@@ -13,16 +13,19 @@ import {
   Keyboard,
   SafeAreaView,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
 import { parseReminderWithGemini } from '../lib/gemini';
 import { saveReminder } from '../utils/storage';
 import { scheduleLocalNotification, requestNotificationPermission } from '../utils/notification';
 import MessageBubble from '../components/MessageBubble';
+import VoiceInput from '../components/VoiceInput'; // 1. Import VoiceInput.
 
 export default function ChatScreen() {
   const [messages, setMessages] = useState([
     {
       id: '1',
-      text: '👋 Hi! I\'m Genie, your smart reminder assistant.\n\nJust tell me what to remember in plain English!\n\n💡 Try:\n• "Remind me to buy milk tomorrow at 10 AM"\n• "Meeting with John on Friday at 3 PM"\n• "Call mom tonight at 8"',
+      text: 'System initialized. Ready for input.\n\nExamples:\n> "Remind me to check servers at 0900"\n> "Meeting with dev team Friday 2pm"',
       isUser: false,
     },
   ]);
@@ -61,7 +64,7 @@ export default function ChatScreen() {
 
       if (!parsed.success) {
         addMessage(
-          `I couldn't quite understand that. ${parsed.error || 'Try: "Remind me tomorrow at 9 AM to check email"'}`,
+          `Command not recognized. ${parsed.error || 'Please refine syntax.'}`,
           false,
           null,
           parsed.error
@@ -81,11 +84,11 @@ export default function ChatScreen() {
         });
 
         reminder.notificationId = notificationId;
-        addMessage(`✅ Perfect! I'll remind you about "${reminder.title}"`, false, reminder);
+        addMessage(`Task scheduled: "${reminder.title}"`, false, reminder);
       } catch (notifError) {
         console.error('Notification error:', notifError);
         addMessage(
-          `Reminder saved, but notification scheduling failed: ${notifError.message}`,
+          `Save successful. Notification scheduling failed: ${notifError.message}`,
           false,
           reminder,
           notifError.message
@@ -93,7 +96,7 @@ export default function ChatScreen() {
       }
     } catch (error) {
       console.error('Error:', error);
-      addMessage(`Something went wrong: ${error.message}`, false, null, error.message);
+      addMessage(`System Error: ${error.message}`, false, null, error.message);
     } finally {
       setLoading(false);
     }
@@ -101,135 +104,185 @@ export default function ChatScreen() {
 
   const handleReminderPress = (reminder) => {
     Alert.alert(
-      '📅 ' + reminder.title,
-      `⏰ ${new Date(reminder.datetime_iso).toLocaleString('en-US', {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      })}\n\n${reminder.notes ? '📝 ' + reminder.notes : 'No additional notes'}`,
-      [{ text: 'Got it!' }]
+      'DATA_VIEW',
+      `ID: ${reminder.title}\nTIME: ${new Date(reminder.datetime_iso).toLocaleString()}`,
+      [{ text: 'ACKNOWLEDGE' }]
     );
   };
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <MessageBubble
-              message={item}
-              isUser={item.isUser}
-              onReminderPress={handleReminderPress}
-            />
-          )}
-          contentContainerStyle={styles.messageList}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          showsVerticalScrollIndicator={false}
-        />
+  // 2. Add handleVoiceResults function.
+  const handleVoiceResults = (text) => {
+    setInput(text);
+    // Optional: Auto-send if desired, but letting user review is safer
+    // handleSend();
+  };
 
-        <View style={styles.inputContainer}>
-          <View style={styles.inputWrapper}>
-            <TextInput
-              style={styles.input}
-              value={input}
-              onChangeText={setInput}
-              placeholder="What should I remind you?"
-              placeholderTextColor="#A0A0A0"
-              multiline
-              maxLength={500}
-              editable={!loading}
-              returnKeyType="send"
-              blurOnSubmit={false}
-            />
-          </View>
-          <TouchableOpacity
-            style={[styles.sendButton, (!input.trim() || loading) && styles.sendButtonDisabled]}
-            onPress={handleSend}
-            disabled={!input.trim() || loading}
-            activeOpacity={0.7}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFF" size="small" />
-            ) : (
-              <Text style={styles.sendButtonText}>↑</Text>
+  return (
+    <View style={styles.container}>
+      <StatusBar style="light" />
+      <LinearGradient
+        colors={['#050B14', '#0A1120']}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* Simulated Grid Background */}
+      <View style={styles.gridContainer} pointerEvents="none">
+        <View style={styles.gridLineVertical} />
+        <View style={[styles.gridLineVertical, { left: '33%' }]} />
+        <View style={[styles.gridLineVertical, { left: '66%' }]} />
+        <View style={[styles.gridLineVertical, { right: 0 }]} />
+      </View>
+
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView
+          style={styles.keyboardView}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        >
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <MessageBubble
+                message={item}
+                isUser={item.isUser}
+                onReminderPress={handleReminderPress}
+              />
             )}
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            contentContainerStyle={styles.messageList}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}
+          />
+
+          <View style={styles.inputArea}>
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputPrefix}>{'>'}</Text>
+              <TextInput
+                style={styles.input}
+                value={input}
+                onChangeText={setInput}
+                placeholder="Enter command..."
+                placeholderTextColor="#475569"
+                multiline
+                maxLength={500}
+                editable={!loading}
+                returnKeyType="send"
+                blurOnSubmit={false}
+              />
+              {/* 3. Add VoiceInput to the input area. */}
+              <VoiceInput
+                onSpeechResults={handleVoiceResults}
+                isProcessing={loading}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.sendButton, (!input.trim() || loading) && styles.sendButtonDisabled]}
+              onPress={handleSend}
+              disabled={!input.trim() || loading}
+              activeOpacity={0.7}
+            >
+              {loading ? (
+                <ActivityIndicator color="#00F0FF" size="small" />
+              ) : (
+                <Text style={[styles.sendButtonText, !input.trim() && styles.sendButtonTextDisabled]}>
+                  EXE
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#050B14',
+  },
+  gridContainer: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    opacity: 0.1,
+  },
+  gridLineVertical: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: '#00F0FF',
+  },
   safeArea: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
   },
-  container: {
+  keyboardView: {
     flex: 1,
   },
   messageList: {
-    padding: 16,
-    paddingBottom: 8,
+    padding: 20,
+    paddingBottom: 20,
+  },
+  inputArea: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: 'rgba(5, 11, 20, 0.95)',
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 12,
   },
   inputContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    alignItems: 'flex-end',
-    gap: 8,
-  },
-  inputWrapper: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#334155',
+    minHeight: 50,
+    paddingHorizontal: 12,
+  },
+  inputPrefix: {
+    color: '#00F0FF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginRight: 8,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   input: {
-    minHeight: 44,
-    maxHeight: 100,
-    paddingHorizontal: 18,
-    paddingTop: 12,
-    paddingBottom: 12,
+    flex: 1,
+    color: '#F8FAFC',
     fontSize: 16,
-    color: '#111827',
-    lineHeight: 20,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    paddingVertical: 14,
+    maxHeight: 100,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#3B82F6',
+    width: 50,
+    height: 50,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: '#00F0FF',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
   },
   sendButtonDisabled: {
-    backgroundColor: '#D1D5DB',
-    shadowOpacity: 0,
+    borderColor: '#334155',
+    backgroundColor: 'transparent',
   },
   sendButtonText: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '600',
+    color: '#00F0FF',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  sendButtonTextDisabled: {
+    color: '#475569',
   },
 });

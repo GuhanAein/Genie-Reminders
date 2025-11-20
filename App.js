@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { Alert, View, Text, StyleSheet } from 'react-native';
@@ -11,6 +11,18 @@ import { requestNotificationPermission } from './utils/notification';
 
 const Tab = createBottomTabNavigator();
 
+const DarkTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: '#0F172A',
+    card: '#1E293B',
+    text: '#F8FAFC',
+    border: '#334155',
+    notification: '#EF4444',
+  },
+};
+
 export default function App() {
   const [isReady, setIsReady] = useState(false);
 
@@ -21,7 +33,7 @@ export default function App() {
   const initializeApp = async () => {
     try {
       const keyExists = await hasGeminiKey();
-      
+
       if (!keyExists) {
         const defaultKey = 'AIzaSyC_8rNxxxxxxxxxxxxxxxxxxx';
         await saveGeminiKey(defaultKey);
@@ -45,20 +57,18 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer>
-      <StatusBar style="dark" />
+    <NavigationContainer theme={DarkTheme}>
+      <StatusBar style="light" />
       <Tab.Navigator
         screenOptions={{
-          tabBarActiveTintColor: '#007AFF',
-          tabBarInactiveTintColor: '#8E8E93',
+          tabBarActiveTintColor: '#00F0FF',
+          tabBarInactiveTintColor: '#64748B',
           tabBarStyle: {
-            backgroundColor: '#FFFFFF',
-            borderTopWidth: 0,
-            elevation: 20,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: -4 },
-            shadowOpacity: 0.1,
-            shadowRadius: 12,
+            backgroundColor: '#0F172A',
+            borderTopWidth: 1,
+            borderTopColor: '#1E293B',
+            elevation: 0,
+            shadowOpacity: 0,
             height: 85,
             paddingTop: 8,
             paddingBottom: 25,
@@ -69,12 +79,13 @@ export default function App() {
             marginTop: -4,
           },
           headerStyle: {
-            backgroundColor: '#FFFFFF',
+            backgroundColor: '#0F172A',
             elevation: 0,
             shadowOpacity: 0,
-            borderBottomWidth: 0,
+            borderBottomWidth: 1,
+            borderBottomColor: '#1E293B',
           },
-          headerTintColor: '#1C1C1E',
+          headerTintColor: '#F8FAFC',
           headerTitleStyle: {
             fontWeight: '700',
             fontSize: 28,
@@ -135,7 +146,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   iconContainerActive: {
-    backgroundColor: '#E8F4FF',
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
   },
   iconText: {
     fontSize: 22,
