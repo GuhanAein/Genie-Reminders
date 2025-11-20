@@ -36,7 +36,7 @@ export async function saveReminder(reminder) {
       // Update local storage with Supabase ID
       if (data && data[0]) {
         reminderWithMeta.supabaseId = data[0].id;
-        const updated = arr.map(r => 
+        const updated = arr.map(r =>
           r.localId === reminderWithMeta.localId ? reminderWithMeta : r
         );
         await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
@@ -94,7 +94,7 @@ export async function deleteReminder(reminderId, isSupabaseId = false) {
     // Delete from local storage
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     const arr = raw ? JSON.parse(raw) : [];
-    const filtered = arr.filter(r => 
+    const filtered = arr.filter(r =>
       isSupabaseId ? r.supabaseId !== reminderId : r.localId !== reminderId
     );
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
@@ -125,9 +125,9 @@ export async function syncLocalToSupabase() {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     const localReminders = raw ? JSON.parse(raw) : [];
-    
+
     const unsynced = localReminders.filter(r => !r.supabaseId);
-    
+
     for (const reminder of unsynced) {
       try {
         const { data, error } = await supabase.from('reminders').insert([{
@@ -148,7 +148,7 @@ export async function syncLocalToSupabase() {
 
     // Update local storage with synced IDs
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(localReminders));
-    
+
     return unsynced.length;
   } catch (error) {
     console.error('Sync error:', error);
@@ -156,3 +156,41 @@ export async function syncLocalToSupabase() {
   }
 }
 
+/**
+ * Update a reminder
+ */
+export async function updateReminder(reminder) {
+  try {
+    // Update local storage
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+
+    const updatedArr = arr.map(r => {
+      const isMatch = reminder.supabaseId
+        ? r.supabaseId === reminder.supabaseId
+        : r.localId === reminder.localId;
+
+      return isMatch ? { ...r, ...reminder } : r;
+    });
+
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedArr));
+
+    // Try to update Supabase
+    if (reminder.supabaseId) {
+      await supabase
+        .from('reminders')
+        .update({
+          title: reminder.title,
+          notes: reminder.notes || '',
+          trigger_at: reminder.datetime_iso,
+          meta: reminder,
+        })
+        .eq('id', reminder.supabaseId);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error updating reminder:', error);
+    throw error;
+  }
+}

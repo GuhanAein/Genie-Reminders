@@ -1,69 +1,95 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function MessageBubble({ message, isUser, onReminderPress }) {
   if (isUser) {
     return (
-      <View style={styles.userContainer}>
-        <View style={styles.userBubble}>
-          <Text style={styles.userText}>{message.text}</Text>
+      <View style={styles.userRow}>
+        <View style={styles.userContent}>
+          <LinearGradient
+            colors={['rgba(0, 240, 255, 0.1)', 'rgba(0, 240, 255, 0.05)']}
+            style={styles.userMessageContainer}
+          >
+            <Text style={styles.userText}>{message.text}</Text>
+          </LinearGradient>
+          <View style={styles.userAccent} />
         </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.botContainer}>
-      <View style={styles.botBubble}>
+    <View style={styles.botRow}>
+      <View style={styles.botContent}>
+        <View style={styles.botHeader}>
+          <View style={styles.botIndicator} />
+          <Text style={styles.botLabel}>GENIE_AI</Text>
+        </View>
+
         <Text style={styles.botText}>{message.text}</Text>
-        
+
         {message.reminder && (
-          <TouchableOpacity 
-            style={styles.reminderCard}
+          <TouchableOpacity
+            style={styles.reminderWidget}
             onPress={() => onReminderPress && onReminderPress(message.reminder)}
             activeOpacity={0.8}
           >
-            <View style={styles.reminderHeader}>
-              <View style={styles.iconBadge}>
-                <Text style={styles.reminderIcon}>📅</Text>
+            <View style={styles.widgetHeader}>
+              <Text style={styles.widgetLabel}>REMINDER_DATA</Text>
+              <View style={styles.widgetStatus}>
+                <View style={styles.statusDot} />
+                <Text style={styles.statusText}>ACTIVE</Text>
               </View>
-              <View style={styles.reminderContent}>
-                <Text style={styles.reminderTitle}>{message.reminder.title}</Text>
-                {message.reminder.notes && (
-                  <Text style={styles.reminderNotes} numberOfLines={2}>
-                    {message.reminder.notes}
+            </View>
+
+            <View style={styles.widgetBody}>
+              <Text style={styles.reminderTitle}>{message.reminder.title}</Text>
+              {message.reminder.notes && (
+                <Text style={styles.reminderNotes}>{message.reminder.notes}</Text>
+              )}
+
+              <View style={styles.metaContainer}>
+                <View style={styles.metaItem}>
+                  <Text style={styles.metaLabel}>DATE</Text>
+                  <Text style={styles.metaValue}>
+                    {new Date(message.reminder.datetime_iso).toLocaleDateString('en-US', {
+                      month: '2-digit',
+                      day: '2-digit',
+                      year: '2-digit'
+                    })}
                   </Text>
-                )}
+                </View>
+                <View style={styles.metaDivider} />
+                <View style={styles.metaItem}>
+                  <Text style={styles.metaLabel}>TIME</Text>
+                  <Text style={styles.metaValue}>
+                    {new Date(message.reminder.datetime_iso).toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: false
+                    })}
+                  </Text>
+                </View>
               </View>
             </View>
-            
-            <View style={styles.reminderFooter}>
-              <View style={styles.timeChip}>
-                <Text style={styles.timeText}>
-                  📅 {new Date(message.reminder.datetime_iso).toLocaleDateString('en-US', { 
-                    weekday: 'short', 
-                    month: 'short', 
-                    day: 'numeric' 
-                  })}
-                </Text>
-              </View>
-              <View style={styles.timeChip}>
-                <Text style={styles.timeText}>
-                  ⏰ {new Date(message.reminder.datetime_iso).toLocaleTimeString('en-US', { 
-                    hour: 'numeric', 
-                    minute: '2-digit' 
-                  })}
-                </Text>
-              </View>
+
+            <View style={styles.widgetFooter}>
+              <Text style={styles.tapHint}>[TAP TO MODIFY]</Text>
             </View>
-            
-            <Text style={styles.tapHint}>Tap to view details</Text>
           </TouchableOpacity>
         )}
-        
+
         {message.error && (
-          <View style={styles.errorCard}>
-            <Text style={styles.errorText}>⚠️ {message.error}</Text>
+          <View style={styles.errorWidget}>
+            <View style={styles.errorHeader}>
+              <Text style={styles.errorIcon}>⚠️</Text>
+              <Text style={styles.errorTitle}>SYSTEM_ALERT</Text>
+            </View>
+            <Text style={styles.errorText}>{message.error}</Text>
+            <View style={styles.errorFooter}>
+              <Text style={styles.errorCode}>ERR_CODE: 0x001</Text>
+            </View>
           </View>
         )}
       </View>
@@ -72,129 +98,224 @@ export default function MessageBubble({ message, isUser, onReminderPress }) {
 }
 
 const styles = StyleSheet.create({
-  userContainer: {
+  userRow: {
     alignItems: 'flex-end',
-    marginVertical: 6,
+    marginVertical: 12,
   },
-  userBubble: {
-    backgroundColor: '#3B82F6',
-    borderRadius: 20,
-    borderBottomRightRadius: 4,
+  userContent: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    maxWidth: '85%',
+  },
+  userMessageContainer: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    maxWidth: '80%',
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: 'rgba(0, 240, 255, 0.05)',
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+    borderTopRightRadius: 4,
+    borderBottomRightRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 240, 255, 0.2)',
   },
   userText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    color: '#E2E8F0',
+    fontSize: 15,
     lineHeight: 22,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  botContainer: {
-    alignItems: 'flex-start',
-    marginVertical: 6,
-  },
-  botBubble: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderBottomLeftRadius: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    maxWidth: '80%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
+  userAccent: {
+    width: 4,
+    backgroundColor: '#00F0FF',
+    marginLeft: 4,
+    borderRadius: 2,
+    shadowColor: '#00F0FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
     shadowRadius: 8,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
+    elevation: 5,
+  },
+  botRow: {
+    alignItems: 'flex-start',
+    marginVertical: 12,
+  },
+  botContent: {
+    maxWidth: '90%',
+  },
+  botHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  botIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#BD00FF',
+    marginRight: 8,
+    shadowColor: '#BD00FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  botLabel: {
+    color: '#BD00FF',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   botText: {
-    color: '#111827',
+    color: '#94A3B8',
     fontSize: 16,
     lineHeight: 24,
+    paddingLeft: 14,
   },
-  reminderCard: {
-    marginTop: 12,
-    backgroundColor: '#EFF6FF',
-    borderRadius: 16,
+  reminderWidget: {
+    marginTop: 16,
+    marginLeft: 14,
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
     borderWidth: 1,
-    borderColor: '#DBEAFE',
+    borderColor: '#334155',
+    borderRadius: 8,
     overflow: 'hidden',
   },
-  reminderHeader: {
+  widgetHeader: {
     flexDirection: 'row',
-    padding: 14,
-  },
-  iconBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#3B82F6',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginRight: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
   },
-  reminderIcon: {
-    fontSize: 24,
+  widgetLabel: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
-  reminderContent: {
-    flex: 1,
-    justifyContent: 'center',
+  widgetStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#10B981',
+    marginRight: 4,
+  },
+  statusText: {
+    color: '#10B981',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  widgetBody: {
+    padding: 16,
   },
   reminderTitle: {
-    fontSize: 16,
+    color: '#F8FAFC',
+    fontSize: 18,
     fontWeight: '600',
-    color: '#111827',
     marginBottom: 4,
+    letterSpacing: 0.5,
   },
   reminderNotes: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 20,
-  },
-  reminderFooter: {
-    flexDirection: 'row',
-    paddingHorizontal: 14,
-    paddingBottom: 12,
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  timeChip: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  timeText: {
+    color: '#94A3B8',
     fontSize: 13,
-    color: '#3B82F6',
-    fontWeight: '500',
-  },
-  tapHint: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    paddingBottom: 10,
+    marginBottom: 16,
     fontStyle: 'italic',
   },
-  errorCard: {
-    marginTop: 10,
-    padding: 12,
-    backgroundColor: '#FEF2F2',
-    borderRadius: 10,
+  metaContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    borderRadius: 4,
+    padding: 8,
+  },
+  metaItem: {
+    flex: 1,
+  },
+  metaLabel: {
+    color: '#475569',
+    fontSize: 9,
+    fontWeight: '700',
+    marginBottom: 2,
+    letterSpacing: 1,
+  },
+  metaValue: {
+    color: '#00F0FF',
+    fontSize: 14,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontWeight: '600',
+  },
+  metaDivider: {
+    width: 1,
+    height: '80%',
+    backgroundColor: '#334155',
+    marginHorizontal: 12,
+  },
+  widgetFooter: {
+    paddingVertical: 6,
+    backgroundColor: 'rgba(0, 240, 255, 0.05)',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 240, 255, 0.1)',
+  },
+  tapHint: {
+    color: '#00F0FF',
+    fontSize: 9,
+    letterSpacing: 2,
+    fontWeight: '700',
+    opacity: 0.7,
+  },
+  errorWidget: {
+    marginTop: 12,
+    marginLeft: 14,
+    backgroundColor: 'rgba(245, 158, 11, 0.05)',
     borderWidth: 1,
-    borderColor: '#FECACA',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  errorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(245, 158, 11, 0.2)',
+  },
+  errorIcon: {
+    fontSize: 12,
+    marginRight: 8,
+  },
+  errorTitle: {
+    color: '#F59E0B',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   errorText: {
-    fontSize: 14,
-    color: '#DC2626',
+    color: '#FCD34D',
+    fontSize: 13,
+    padding: 12,
     lineHeight: 20,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  errorFooter: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+  },
+  errorCode: {
+    color: '#78350F',
+    fontSize: 9,
+    fontWeight: '700',
+    opacity: 0.7,
   },
 });

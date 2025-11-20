@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
-  Switch,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { saveGeminiKey, getGeminiKey, hasGeminiKey } from '../lib/secureKey';
@@ -20,16 +20,28 @@ export default function SettingsScreen() {
   const [hasKey, setHasKey] = useState(false);
   const [loading, setLoading] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [statusMsg, setStatusMsg] = useState(null);
 
   useEffect(() => {
     loadSettings();
     loadNotificationCount();
   }, []);
 
+  useEffect(() => {
+    if (statusMsg) {
+      const timer = setTimeout(() => setStatusMsg(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [statusMsg]);
+
+  const showStatus = (type, message) => {
+    setStatusMsg({ type, message });
+  };
+
   const loadSettings = async () => {
     const keyExists = await hasGeminiKey();
     setHasKey(keyExists);
-    
+
     if (keyExists) {
       const key = await getGeminiKey();
       setGeminiKey(key ? `${key.substring(0, 10)}...` : '');
@@ -43,25 +55,25 @@ export default function SettingsScreen() {
 
   const handleSaveGeminiKey = async () => {
     if (!geminiKey.trim()) {
-      Alert.alert('Missing Key', 'Please enter your Gemini API key');
+      showStatus('error', 'INPUT_ERROR: KEY_MISSING');
       return;
     }
 
     setLoading(true);
     try {
       const isValid = await testGeminiKey(geminiKey);
-      
+
       if (!isValid) {
-        Alert.alert('Invalid Key', 'This API key doesn\'t work. Please check and try again.');
+        showStatus('error', 'AUTH_FAILED: INVALID_KEY');
         setLoading(false);
         return;
       }
 
       await saveGeminiKey(geminiKey);
       setHasKey(true);
-      Alert.alert('✓ Success', 'Your Gemini API key has been saved!');
+      showStatus('success', 'KEY_SECURED');
     } catch (error) {
-      Alert.alert('Error', `Failed to save key: ${error.message}`);
+      showStatus('error', `SYS_ERR: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -76,9 +88,9 @@ export default function SettingsScreen() {
     setLoading(true);
     try {
       const count = await syncLocalToSupabase();
-      Alert.alert('✓ Synced', `${count} reminder${count !== 1 ? 's' : ''} synced to cloud`);
+      showStatus('success', `SYNC_COMPLETE: ${count} RECORDS`);
     } catch (error) {
-      Alert.alert('Sync Failed', error.message);
+      showStatus('error', `SYNC_FAILED: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -86,16 +98,16 @@ export default function SettingsScreen() {
 
   const handleClearData = () => {
     Alert.alert(
-      'Clear Local Data?',
-      'This will delete all local reminders. Cloud data will remain untouched.',
+      'CRITICAL_ACTION',
+      'INITIATE_LOCAL_WIPE?',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'ABORT', style: 'cancel' },
         {
-          text: 'Clear',
+          text: 'CONFIRM_WIPE',
           style: 'destructive',
           onPress: async () => {
             await clearAllLocalReminders();
-            Alert.alert('✓ Cleared', 'Local data has been cleared');
+            showStatus('warning', 'LOCAL_DATA_PURGED');
           },
         },
       ]
@@ -104,201 +116,157 @@ export default function SettingsScreen() {
 
   const handleClearNotifications = () => {
     Alert.alert(
-      'Cancel All Notifications?',
-      `This will cancel ${notificationCount} scheduled notification${notificationCount !== 1 ? 's' : ''}.`,
+      'CRITICAL_ACTION',
+      `CANCEL ${notificationCount} SCHEDULED_TASKS?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'ABORT', style: 'cancel' },
         {
-          text: 'Clear All',
+          text: 'CONFIRM',
           style: 'destructive',
           onPress: async () => {
             await cancelAllNotifications();
             await loadNotificationCount();
-            Alert.alert('✓ Cleared', 'All notifications have been cancelled');
+            showStatus('warning', 'SCHEDULE_CLEARED');
           },
         },
       ]
     );
   };
 
+  const renderSectionHeader = (title) => (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionHeaderIndicator} />
+      <Text style={styles.sectionHeaderText}>{title}</Text>
+      <View style={styles.sectionHeaderLine} />
+    </View>
+  );
+
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#E8EFFF', '#F8F9FF', '#F2F2F7']}
+        colors={['#050B14', '#0A1120']}
         style={StyleSheet.absoluteFillObject}
       />
-      
-      <ScrollView 
+
+      <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.headerIconContainer}>
-            <Text style={styles.headerIcon}>⚙️</Text>
-          </View>
-          <Text style={styles.headerTitle}>Settings</Text>
-          <Text style={styles.headerSubtitle}>Manage your preferences</Text>
+          <Text style={styles.headerTitle}>SYSTEM_CONFIG</Text>
+          <Text style={styles.headerSubtitle}>V1.0.0 // GENIE_CORE</Text>
         </View>
+
+        {/* Status Bar */}
+        {statusMsg && (
+          <View style={[
+            styles.statusBar,
+            statusMsg.type === 'error' ? styles.statusError :
+              statusMsg.type === 'warning' ? styles.statusWarning : styles.statusSuccess
+          ]}>
+            <Text style={styles.statusText}>{statusMsg.message}</Text>
+          </View>
+        )}
 
         {/* API Key Section */}
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionIcon}>🔑</Text>
-            <View style={styles.sectionHeaderText}>
-              <Text style={styles.sectionTitle}>Gemini API Key</Text>
-              <Text style={styles.sectionDescription}>
-                Securely stored on your device
-              </Text>
-            </View>
-          </View>
+          {renderSectionHeader('API_CONFIGURATION')}
 
           {!hasKey ? (
-            <View style={styles.sectionContent}>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.input}
-                  value={geminiKey}
-                  onChangeText={setGeminiKey}
-                  placeholder="Enter your API key"
-                  placeholderTextColor="#A0A0A5"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-              
+            <View style={styles.card}>
+              <TextInput
+                style={styles.input}
+                value={geminiKey}
+                onChangeText={setGeminiKey}
+                placeholder="ENTER_API_KEY"
+                placeholderTextColor="#475569"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+
               <TouchableOpacity
                 onPress={handleSaveGeminiKey}
                 disabled={loading}
                 activeOpacity={0.8}
+                style={styles.actionButton}
               >
-                <LinearGradient
-                  colors={loading ? ['#C7C7CC', '#C7C7CC'] : ['#667EEA', '#764BA2']}
-                  style={styles.button}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <Text style={styles.buttonText}>
-                    {loading ? 'Validating...' : 'Save API Key'}
-                  </Text>
-                </LinearGradient>
+                <Text style={styles.actionButtonText}>
+                  {loading ? 'VALIDATING...' : 'INITIALIZE_KEY'}
+                </Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={styles.keyStatusContainer}>
-              <LinearGradient
-                colors={['#E8F5E9', '#C8E6C9']}
-                style={styles.keyStatus}
+            <View style={styles.card}>
+              <View style={styles.statusRow}>
+                <Text style={styles.statusLabel}>STATUS:</Text>
+                <Text style={styles.statusValueActive}>CONNECTED</Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleUpdateKey}
+                style={styles.outlineButton}
               >
-                <View style={styles.keyStatusLeft}>
-                  <Text style={styles.keyStatusIcon}>✓</Text>
-                  <Text style={styles.keyStatusText}>API Key Configured</Text>
-                </View>
-                <TouchableOpacity 
-                  onPress={handleUpdateKey}
-                  style={styles.changeButton}
-                >
-                  <Text style={styles.changeButtonText}>Change</Text>
-                </TouchableOpacity>
-              </LinearGradient>
+                <Text style={styles.outlineButtonText}>RECONFIGURE</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
 
         {/* Notifications Section */}
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionIcon}>🔔</Text>
-            <View style={styles.sectionHeaderText}>
-              <Text style={styles.sectionTitle}>Notifications</Text>
-              <Text style={styles.sectionDescription}>
-                {notificationCount} scheduled notification{notificationCount !== 1 ? 's' : ''}
-              </Text>
-            </View>
-          </View>
+          {renderSectionHeader('NOTIFICATION_MODULE')}
 
-          <View style={styles.sectionContent}>
-            <View style={styles.statBox}>
-              <LinearGradient
-                colors={['#4facfe', '#00f2fe']}
-                style={styles.statBoxGradient}
-              >
-                <Text style={styles.statBoxNumber}>{notificationCount}</Text>
-                <Text style={styles.statBoxLabel}>Active Reminders</Text>
-              </LinearGradient>
+          <View style={styles.gridContainer}>
+            <View style={styles.gridItem}>
+              <Text style={styles.gridLabel}>ACTIVE_TASKS</Text>
+              <Text style={styles.gridValue}>{notificationCount}</Text>
             </View>
 
             <TouchableOpacity
               onPress={handleClearNotifications}
               disabled={notificationCount === 0}
               activeOpacity={0.8}
+              style={[styles.gridItem, styles.gridAction, notificationCount === 0 && styles.disabledAction]}
             >
-              <View style={[styles.secondaryButton, notificationCount === 0 && styles.buttonDisabled]}>
-                <Text style={[styles.secondaryButtonText, notificationCount === 0 && styles.buttonDisabledText]}>
-                  Cancel All Notifications
-                </Text>
-              </View>
+              <Text style={[styles.gridActionText, notificationCount === 0 && styles.disabledActionText]}>
+                PURGE_ALL
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Cloud Sync Section */}
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionIcon}>☁️</Text>
-            <View style={styles.sectionHeaderText}>
-              <Text style={styles.sectionTitle}>Cloud Sync</Text>
-              <Text style={styles.sectionDescription}>
-                Sync with Supabase
-              </Text>
-            </View>
-          </View>
+          {renderSectionHeader('CLOUD_UPLINK')}
 
-          <View style={styles.sectionContent}>
+          <View style={styles.card}>
             <TouchableOpacity
               onPress={handleSync}
               disabled={loading}
               activeOpacity={0.8}
+              style={styles.actionButton}
             >
-              <View style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>
-                  {loading ? 'Syncing...' : 'Sync Now'}
-                </Text>
-              </View>
+              <Text style={styles.actionButtonText}>
+                {loading ? 'TRANSMITTING...' : 'INITIATE_SYNC'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Danger Zone */}
-        <View style={[styles.section, styles.dangerSection]}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionIcon}>⚠️</Text>
-            <View style={styles.sectionHeaderText}>
-              <Text style={styles.sectionTitle}>Danger Zone</Text>
-              <Text style={styles.sectionDescription}>
-                Irreversible actions
-              </Text>
-            </View>
-          </View>
+        <View style={styles.section}>
+          {renderSectionHeader('DANGER_ZONE')}
 
-          <View style={styles.sectionContent}>
+          <View style={[styles.card, styles.dangerCard]}>
             <TouchableOpacity
               onPress={handleClearData}
               activeOpacity={0.8}
+              style={styles.dangerButton}
             >
-              <View style={styles.dangerButton}>
-                <Text style={styles.dangerButtonText}>Clear Local Data</Text>
-              </View>
+              <Text style={styles.dangerButtonText}>FACTORY_RESET_LOCAL</Text>
             </TouchableOpacity>
           </View>
-        </View>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerTitle}>🧞 Genie Reminders</Text>
-          <Text style={styles.footerVersion}>Version 1.0.0</Text>
-          <Text style={styles.footerPowered}>Powered by Gemini AI & Supabase</Text>
         </View>
       </ScrollView>
     </View>
@@ -308,224 +276,200 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#050B14',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
+    padding: 20,
     paddingBottom: 40,
   },
   header: {
-    alignItems: 'center',
-    paddingVertical: 32,
-    paddingHorizontal: 20,
-  },
-  headerIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-    shadowColor: '#667EEA',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  headerIcon: {
-    fontSize: 48,
+    marginBottom: 32,
+    marginTop: 12,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1C1C1E',
-    marginBottom: 6,
-    letterSpacing: -0.5,
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#F8FAFC',
+    letterSpacing: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   headerSubtitle: {
-    fontSize: 15,
-    color: '#8E8E93',
-    fontWeight: '500',
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   section: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 24,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  dangerSection: {
-    borderWidth: 1,
-    borderColor: 'rgba(255, 59, 48, 0.1)',
+    marginBottom: 32,
   },
   sectionHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 20,
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  sectionIcon: {
-    fontSize: 28,
-    marginRight: 12,
+  sectionHeaderIndicator: {
+    width: 4,
+    height: 16,
+    backgroundColor: '#00F0FF',
+    marginRight: 8,
   },
   sectionHeaderText: {
-    flex: 1,
-  },
-  sectionTitle: {
-    fontSize: 20,
+    color: '#00F0FF',
+    fontSize: 12,
     fontWeight: '700',
-    color: '#1C1C1E',
-    marginBottom: 4,
-    letterSpacing: -0.3,
+    letterSpacing: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  sectionDescription: {
-    fontSize: 14,
-    color: '#8E8E93',
-    lineHeight: 20,
+  sectionHeaderLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#1E293B',
+    marginLeft: 12,
   },
-  sectionContent: {
-    gap: 12,
-  },
-  inputWrapper: {
-    backgroundColor: '#F2F2F7',
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: 'rgba(102, 126, 234, 0.1)',
-    overflow: 'hidden',
+  card: {
+    backgroundColor: 'rgba(30, 41, 59, 0.3)',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 4,
+    padding: 16,
   },
   input: {
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    fontSize: 16,
-    color: '#1C1C1E',
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#334155',
+    color: '#F8FAFC',
+    padding: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 14,
+    marginBottom: 16,
+    borderRadius: 4,
   },
-  button: {
-    borderRadius: 16,
-    paddingVertical: 16,
+  actionButton: {
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: '#00F0FF',
+    padding: 14,
     alignItems: 'center',
-    shadowColor: '#667EEA',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 4,
+    borderRadius: 4,
   },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 17,
+  actionButtonText: {
+    color: '#00F0FF',
     fontWeight: '700',
+    fontSize: 12,
+    letterSpacing: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  keyStatusContainer: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  keyStatus: {
+  statusRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 18,
+    marginBottom: 16,
   },
-  keyStatusLeft: {
+  statusLabel: {
+    color: '#64748B',
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  statusValueActive: {
+    color: '#10B981',
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  outlineButton: {
+    borderWidth: 1,
+    borderColor: '#64748B',
+    padding: 12,
+    alignItems: 'center',
+    borderRadius: 4,
+  },
+  outlineButtonText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  gridContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
-  keyStatusIcon: {
-    fontSize: 24,
-    color: '#2E7D32',
-  },
-  keyStatusText: {
-    fontSize: 17,
-    color: '#2E7D32',
-    fontWeight: '700',
-  },
-  changeButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  changeButtonText: {
-    color: '#2E7D32',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  statBox: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  statBoxGradient: {
-    padding: 24,
+  gridItem: {
+    flex: 1,
+    backgroundColor: 'rgba(30, 41, 59, 0.3)',
+    borderWidth: 1,
+    borderColor: '#334155',
+    padding: 16,
+    borderRadius: 4,
     alignItems: 'center',
   },
-  statBoxNumber: {
-    fontSize: 48,
-    fontWeight: '800',
-    color: '#FFFFFF',
+  gridLabel: {
+    color: '#64748B',
+    fontSize: 10,
     marginBottom: 8,
-    letterSpacing: -1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  statBoxLabel: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.95)',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  secondaryButton: {
-    backgroundColor: '#F2F2F7',
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(102, 126, 234, 0.2)',
-  },
-  secondaryButtonText: {
-    color: '#667EEA',
-    fontSize: 17,
+  gridValue: {
+    color: '#F8FAFC',
+    fontSize: 24,
     fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  buttonDisabled: {
-    opacity: 0.5,
+  gridAction: {
+    justifyContent: 'center',
+    borderColor: '#EF4444',
+    backgroundColor: 'rgba(239, 68, 68, 0.05)',
   },
-  buttonDisabledText: {
-    color: '#8E8E93',
+  gridActionText: {
+    color: '#EF4444',
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  disabledAction: {
+    borderColor: '#334155',
+    backgroundColor: 'transparent',
+  },
+  disabledActionText: {
+    color: '#475569',
+  },
+  dangerCard: {
+    borderColor: '#EF4444',
+    backgroundColor: 'rgba(239, 68, 68, 0.05)',
   },
   dangerButton: {
-    backgroundColor: '#FFF5F5',
-    borderRadius: 16,
-    paddingVertical: 16,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 59, 48, 0.2)',
   },
   dangerButtonText: {
-    color: '#FF3B30',
-    fontSize: 17,
+    color: '#EF4444',
     fontWeight: '700',
+    fontSize: 12,
+    letterSpacing: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  footer: {
-    alignItems: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: 20,
+  statusBar: {
+    marginBottom: 24,
+    padding: 12,
+    borderRadius: 4,
+    borderWidth: 1,
   },
-  footerTitle: {
-    fontSize: 20,
+  statusError: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: '#EF4444',
+  },
+  statusSuccess: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderColor: '#10B981',
+  },
+  statusWarning: {
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderColor: '#F59E0B',
+  },
+  statusText: {
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     fontWeight: '700',
-    color: '#1C1C1E',
-    marginBottom: 8,
-  },
-  footerVersion: {
-    fontSize: 14,
-    color: '#8E8E93',
-    marginBottom: 4,
-    fontWeight: '600',
-  },
-  footerPowered: {
-    fontSize: 13,
-    color: '#C7C7CC',
+    textAlign: 'center',
+    color: '#F8FAFC',
   },
 });

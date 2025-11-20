@@ -9,12 +9,14 @@ import {
   RefreshControl,
   ScrollView,
   Modal,
+  Platform,
   TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Calendar } from 'react-native-calendars';
-import { getReminders, deleteReminder } from '../utils/storage';
-import { cancelNotification } from '../utils/notification';
+import { getReminders, deleteReminder, updateReminder } from '../utils/storage';
+import { cancelNotification, scheduleLocalNotification } from '../utils/notification';
 import { useFocusEffect } from '@react-navigation/native';
 
 export default function CalendarScreen() {
@@ -25,72 +27,33 @@ export default function CalendarScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingReminder, setEditingReminder] = useState(null);
 
+  // Edit form state
+  const [editTitle, setEditTitle] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+
   const loadReminders = async () => {
     try {
       const data = await getReminders();
-      console.log('Loaded reminders:', data);
       setReminders(data);
-      
-      // Mark dates with reminders
+
       const marks = {};
       data.forEach((reminder) => {
         if (reminder.datetime_iso) {
-          // Extract date in YYYY-MM-DD format
           const date = reminder.datetime_iso.split('T')[0];
-          const hour = new Date(reminder.datetime_iso).getHours();
-          
+
           if (!marks[date]) {
-            marks[date] = { 
-              marked: true, 
-              dots: [{ color: getColorByHour(hour) }]
+            marks[date] = {
+              marked: true,
+              dotColor: '#00F0FF'
             };
-          } else {
-            marks[date].dots.push({ color: getColorByHour(hour) });
           }
         }
       });
-      
-      console.log('Marked dates:', marks);
+
       setMarkedDates(marks);
     } catch (error) {
       console.error('Error loading reminders:', error);
-      Alert.alert('Error', 'Failed to load reminders');
     }
-  };
-
-  const getColorByHour = (hour) => {
-    if (hour < 12) return '#FF9500';
-    if (hour < 17) return '#007AFF';
-    return '#5856D6';
-  };
-
-  const getCategoryColor = (datetime) => {
-    const hour = new Date(datetime).getHours();
-    if (hour < 12) return { 
-      gradient: ['#FF9500', '#FF6B00'], 
-      bg: '#FFF5E6', 
-      text: '#CC7A00',
-      emoji: '☀️'
-    };
-    if (hour < 17) return { 
-      gradient: ['#007AFF', '#0051D5'], 
-      bg: '#E8F4FF', 
-      text: '#0051D5',
-      emoji: '🌤️'
-    };
-    return { 
-      gradient: ['#5856D6', '#4642A8'], 
-      bg: '#F0EFFF', 
-      text: '#4642A8',
-      emoji: '🌙'
-    };
-  };
-
-  const getCategoryLabel = (datetime) => {
-    const hour = new Date(datetime).getHours();
-    if (hour < 12) return 'Morning';
-    if (hour < 17) return 'Afternoon';
-    return 'Evening';
   };
 
   useEffect(() => {
@@ -110,7 +73,6 @@ export default function CalendarScreen() {
   };
 
   const handleDateSelect = (date) => {
-    console.log('Selected date:', date.dateString);
     setSelectedDate(date.dateString);
   };
 
@@ -121,37 +83,73 @@ export default function CalendarScreen() {
       const reminderDate = r.datetime_iso.split('T')[0];
       return reminderDate === selectedDate;
     });
-    console.log('Reminders for', selectedDate, ':', filtered);
     return filtered.sort((a, b) => new Date(a.datetime_iso) - new Date(b.datetime_iso));
   };
 
   const handleEditReminder = (reminder) => {
     setEditingReminder(reminder);
+    setEditTitle(reminder.title);
+    setEditNotes(reminder.notes || '');
     setEditModalVisible(true);
   };
 
-  const handleDeleteReminder = (reminder) => {
+  const handleSaveEdit = async () => {
+    if (!editingReminder || !editTitle.trim()) return;
+
+    try {
+      const updatedReminder = {
+        ...editingReminder,
+        title: editTitle.trim(),
+        notes: editNotes.trim(),
+      };
+
+      await updateReminder(updatedReminder);
+
+      // Update notification if it exists
+      if (updatedReminder.notificationId) {
+        await cancelNotification(updatedReminder.notificationId);
+        const newNotifId = await scheduleLocalNotification({
+          title: updatedReminder.title,
+          body: updatedReminder.notes || 'Reminder',
+          isoDate: updatedReminder.datetime_iso,
+          data: { reminderId: updatedReminder.localId },
+        });
+        // Update with new notification ID
+        updatedReminder.notificationId = newNotifId;
+        await updateReminder(updatedReminder);
+      }
+
+      setEditModalVisible(false);
+      await loadReminders();
+      Alert.alert('SYSTEM', 'RECORD_UPDATED');
+    } catch (error) {
+      Alert.alert('ERROR', 'UPDATE_FAILED');
+      console.error(error);
+    }
+  };
+
+  const handleDeleteReminder = (reminder, onSuccess) => {
     Alert.alert(
-      'Delete Reminder',
-      `Delete "${reminder.title}"?`,
+      'CONFIRM_DELETION',
+      `Purge record "${reminder.title}"?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'CANCEL', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'PURGE',
           style: 'destructive',
           onPress: async () => {
             try {
               if (reminder.notificationId) {
                 await cancelNotification(reminder.notificationId);
               }
-              
+
               const id = reminder.supabaseId || reminder.localId;
               await deleteReminder(id, !!reminder.supabaseId);
-              
+
               await loadReminders();
+              if (onSuccess) onSuccess();
             } catch (error) {
               console.error('Delete error:', error);
-              Alert.alert('Error', 'Failed to delete reminder');
             }
           },
         },
@@ -162,74 +160,42 @@ export default function CalendarScreen() {
   const renderReminderItem = ({ item }) => {
     const dateObj = new Date(item.datetime_iso);
     const time = dateObj.toLocaleTimeString('en-US', {
-      hour: 'numeric',
+      hour: '2-digit',
       minute: '2-digit',
+      hour12: false
     });
-    const fullDate = dateObj.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-    
-    const colors = getCategoryColor(item.datetime_iso);
 
     return (
-      <View style={styles.reminderCard}>
-        <LinearGradient
-          colors={['#FFFFFF', '#FAFBFF']}
-          style={styles.reminderGradient}
+      <View style={styles.timelineRow}>
+        <View style={styles.timelineLeft}>
+          <Text style={styles.timelineTime}>{time}</Text>
+          <View style={styles.timelineDot} />
+          <View style={styles.timelineLine} />
+        </View>
+
+        <TouchableOpacity
+          style={styles.reminderCard}
+          onPress={() => handleEditReminder(item)}
+          activeOpacity={0.7}
         >
-          <View style={[styles.categoryStrip, { backgroundColor: colors.gradient[0] }]} />
-          
-          <View style={styles.reminderMain}>
-            <TouchableOpacity 
-              style={styles.reminderLeft}
-              onPress={() => handleEditReminder(item)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.categoryBadge, { backgroundColor: colors.bg }]}>
-                <Text style={styles.categoryEmoji}>{colors.emoji}</Text>
-                <Text style={[styles.categoryText, { color: colors.text }]}>
-                  {getCategoryLabel(item.datetime_iso)}
-                </Text>
-              </View>
-              
-              <Text style={styles.reminderTitle}>{item.title}</Text>
-              
-              {item.notes && (
-                <Text style={styles.reminderNotes} numberOfLines={2}>
-                  {item.notes}
-                </Text>
-              )}
-              
-              <View style={styles.timeContainer}>
-                <LinearGradient
-                  colors={colors.gradient}
-                  style={styles.timeChip}
-                >
-                  <Text style={styles.timeText}>📅 {fullDate}</Text>
-                </LinearGradient>
-                <LinearGradient
-                  colors={colors.gradient}
-                  style={[styles.timeChip, { marginLeft: 8 }]}
-                >
-                  <Text style={styles.timeText}>⏰ {time}</Text>
-                </LinearGradient>
-              </View>
-              
-              <Text style={styles.tapToEdit}>Tap to edit</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={() => handleDeleteReminder(item)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Text style={styles.deleteIcon}>🗑️</Text>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>{item.title}</Text>
+            <TouchableOpacity onPress={() => handleDeleteReminder(item)}>
+              <Text style={styles.deleteIcon}>×</Text>
             </TouchableOpacity>
           </View>
-        </LinearGradient>
+
+          {item.notes && (
+            <Text style={styles.cardNotes} numberOfLines={2}>
+              {item.notes}
+            </Text>
+          )}
+
+          <View style={styles.cardFooter}>
+            <Text style={styles.cardStatus}>STATUS: PENDING</Text>
+            <Text style={styles.editHint}>[EDIT]</Text>
+          </View>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -243,36 +209,35 @@ export default function CalendarScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#F8F9FF', '#F2F2F7']}
+        colors={['#050B14', '#0A1120']}
         style={StyleSheet.absoluteFillObject}
       />
-      
-      {/* Stats Header */}
+
+      {/* Header Stats */}
       <View style={styles.statsContainer}>
-        <LinearGradient colors={['#667EEA', '#764BA2']} style={styles.statCard}>
-          <Text style={styles.statNumber}>{reminders.length}</Text>
-          <Text style={styles.statLabel}>Total</Text>
-        </LinearGradient>
-        
-        <LinearGradient colors={['#f093fb', '#f5576c']} style={styles.statCard}>
-          <Text style={styles.statNumber}>{upcomingCount}</Text>
-          <Text style={styles.statLabel}>Upcoming</Text>
-        </LinearGradient>
-        
-        <LinearGradient colors={['#4facfe', '#00f2fe']} style={styles.statCard}>
-          <Text style={styles.statNumber}>{todayReminders.length}</Text>
-          <Text style={styles.statLabel}>Selected</Text>
-        </LinearGradient>
+        <View style={styles.statBox}>
+          <Text style={styles.statLabel}>TOTAL_TASKS</Text>
+          <Text style={styles.statValue}>{reminders.length}</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statBox}>
+          <Text style={styles.statLabel}>PENDING</Text>
+          <Text style={[styles.statValue, { color: '#00F0FF' }]}>{upcomingCount}</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statBox}>
+          <Text style={styles.statLabel}>SELECTED</Text>
+          <Text style={[styles.statValue, { color: '#BD00FF' }]}>{todayReminders.length}</Text>
+        </View>
       </View>
 
-      <ScrollView 
+      <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00F0FF" />
         }
       >
-        {/* Calendar */}
-        <View style={styles.calendarContainer}>
+        <View style={styles.calendarWrapper}>
           <Calendar
             onDayPress={handleDateSelect}
             markedDates={{
@@ -280,58 +245,44 @@ export default function CalendarScreen() {
               [selectedDate]: {
                 ...markedDates[selectedDate],
                 selected: true,
-                selectedColor: '#667EEA',
+                selectedColor: '#00F0FF',
+                selectedTextColor: '#000000',
               },
             }}
-            markingType={'multi-dot'}
             theme={{
-              backgroundColor: '#FFFFFF',
+              backgroundColor: 'transparent',
               calendarBackground: 'transparent',
-              textSectionTitleColor: '#8E8E93',
-              selectedDayBackgroundColor: '#667EEA',
-              selectedDayTextColor: '#FFFFFF',
-              todayTextColor: '#667EEA',
-              dayTextColor: '#1C1C1E',
-              textDisabledColor: '#C7C7CC',
-              dotColor: '#667EEA',
-              selectedDotColor: '#FFFFFF',
-              arrowColor: '#667EEA',
-              monthTextColor: '#1C1C1E',
-              textDayFontWeight: '500',
-              textMonthFontWeight: '700',
-              textDayHeaderFontWeight: '600',
-              textDayFontSize: 16,
-              textMonthFontSize: 20,
-              textDayHeaderFontSize: 13,
+              textSectionTitleColor: '#64748B',
+              selectedDayBackgroundColor: '#00F0FF',
+              selectedDayTextColor: '#000000',
+              todayTextColor: '#00F0FF',
+              dayTextColor: '#E2E8F0',
+              textDisabledColor: '#334155',
+              dotColor: '#00F0FF',
+              selectedDotColor: '#000000',
+              arrowColor: '#00F0FF',
+              monthTextColor: '#F8FAFC',
+              textDayFontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+              textMonthFontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+              textDayHeaderFontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+              textDayFontSize: 14,
+              textMonthFontSize: 16,
+              textDayHeaderFontSize: 12,
             }}
             style={styles.calendar}
           />
         </View>
 
-        {/* Reminders List */}
         <View style={styles.listContainer}>
           <View style={styles.listHeader}>
             <Text style={styles.listTitle}>
-              {selectedDate
-                ? new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    month: 'long',
-                    day: 'numeric',
-                  })
-                : 'Select a date'}
+              {selectedDate ? `LOG: ${selectedDate}` : 'SELECT_DATE_FOR_LOGS'}
             </Text>
-            {selectedDate && (
-              <Text style={styles.listSubtitle}>
-                {todayReminders.length} reminder{todayReminders.length !== 1 ? 's' : ''}
-              </Text>
-            )}
           </View>
 
           {selectedDate && todayReminders.length === 0 && (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>📭</Text>
-              <Text style={styles.emptyText}>No reminders</Text>
-              <Text style={styles.emptySubtext}>Go to Chat to create one!</Text>
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>[NO_DATA_FOUND]</Text>
             </View>
           )}
 
@@ -340,7 +291,6 @@ export default function CalendarScreen() {
               data={todayReminders}
               keyExtractor={(item) => item.localId || item.supabaseId}
               renderItem={renderReminderItem}
-              contentContainerStyle={styles.listContent}
               scrollEnabled={false}
             />
           )}
@@ -350,74 +300,74 @@ export default function CalendarScreen() {
       {/* Edit Modal */}
       <Modal
         visible={editModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent={true}
         onRequestClose={() => setEditModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>View Reminder</Text>
+              <Text style={styles.modalTitle}>EDIT_RECORD</Text>
               <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Text style={styles.modalClose}>✕</Text>
+                <Text style={styles.modalClose}>[CANCEL]</Text>
               </TouchableOpacity>
             </View>
-            
+
             {editingReminder && (
               <View style={styles.modalBody}>
-                <View style={styles.modalField}>
-                  <Text style={styles.modalLabel}>Title</Text>
-                  <Text style={styles.modalValue}>{editingReminder.title}</Text>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>TITLE_DATA</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={editTitle}
+                    onChangeText={setEditTitle}
+                    placeholder="ENTER_TITLE"
+                    placeholderTextColor="#475569"
+                  />
                 </View>
-                
-                {editingReminder.notes && (
-                  <View style={styles.modalField}>
-                    <Text style={styles.modalLabel}>Notes</Text>
-                    <Text style={styles.modalValue}>{editingReminder.notes}</Text>
-                  </View>
-                )}
-                
-                <View style={styles.modalField}>
-                  <Text style={styles.modalLabel}>Date & Time</Text>
-                  <Text style={styles.modalValue}>
-                    {new Date(editingReminder.datetime_iso).toLocaleString('en-US', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit',
-                    })}
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>NOTES_DATA</Text>
+                  <TextInput
+                    style={[styles.modalInput, styles.textArea]}
+                    value={editNotes}
+                    onChangeText={setEditNotes}
+                    placeholder="ENTER_NOTES"
+                    placeholderTextColor="#475569"
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+
+                <View style={styles.dataRow}>
+                  <Text style={styles.dataLabel}>TIMESTAMP_LOCKED:</Text>
+                  <Text style={styles.dataValue}>
+                    {new Date(editingReminder.datetime_iso).toLocaleString()}
                   </Text>
                 </View>
-                
-                <View style={styles.modalField}>
-                  <Text style={styles.modalLabel}>Category</Text>
-                  <View style={styles.modalCategory}>
-                    <Text style={styles.categoryEmoji}>
-                      {getCategoryColor(editingReminder.datetime_iso).emoji}
-                    </Text>
-                    <Text style={styles.modalValue}>
-                      {getCategoryLabel(editingReminder.datetime_iso)}
-                    </Text>
-                  </View>
-                </View>
+
+                <TouchableOpacity
+                  style={styles.saveButton}
+                  onPress={handleSaveEdit}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.saveButtonText}>SAVE_CHANGES</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => handleDeleteReminder(editingReminder, () => setEditModalVisible(false))}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.deleteButtonText}>DELETE_RECORD</Text>
+                </TouchableOpacity>
               </View>
             )}
-            
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => setEditModalVisible(false)}
-            >
-              <LinearGradient
-                colors={['#667EEA', '#764BA2']}
-                style={styles.modalCloseGradient}
-              >
-                <Text style={styles.modalCloseText}>Close</Text>
-              </LinearGradient>
-            </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -426,258 +376,253 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#050B14',
   },
   statsContainer: {
     flexDirection: 'row',
-    padding: 16,
-    paddingBottom: 8,
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 20,
+    justifyContent: 'space-between',
     padding: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 4,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
   },
-  statNumber: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: 4,
-    letterSpacing: -1,
+  statBox: {
+    alignItems: 'center',
+    flex: 1,
   },
   statLabel: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontWeight: '600',
-    textTransform: 'uppercase',
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 4,
     letterSpacing: 1,
   },
-  calendarContainer: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    borderRadius: 24,
-    padding: 12,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
+  statValue: {
+    color: '#F8FAFC',
+    fontSize: 20,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  calendar: {
-    borderRadius: 20,
+  statDivider: {
+    width: 1,
+    backgroundColor: '#334155',
+    height: '100%',
+  },
+  calendarWrapper: {
+    margin: 16,
+    padding: 8,
+    backgroundColor: 'rgba(30, 41, 59, 0.3)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#1E293B',
   },
   listContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
+    padding: 16,
   },
   listHeader: {
     marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#00F0FF',
+    paddingBottom: 8,
   },
   listTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#1C1C1E',
-    letterSpacing: -0.5,
+    color: '#00F0FF',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  emptyState: {
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+  },
+  emptyText: {
+    color: '#64748B',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  timelineLeft: {
+    width: 60,
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  timelineTime: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     marginBottom: 4,
   },
-  listSubtitle: {
-    fontSize: 15,
-    color: '#8E8E93',
-    fontWeight: '500',
+  timelineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#00F0FF',
+    marginBottom: 4,
   },
-  listContent: {
-    gap: 14,
+  timelineLine: {
+    width: 1,
+    flex: 1,
+    backgroundColor: '#334155',
   },
   reminderCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
+    flex: 1,
+    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 4,
+    padding: 12,
   },
-  reminderGradient: {
-    borderRadius: 20,
-  },
-  categoryStrip: {
-    height: 4,
-    width: '100%',
-  },
-  reminderMain: {
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    padding: 18,
+    marginBottom: 8,
   },
-  reminderLeft: {
+  cardTitle: {
+    color: '#F8FAFC',
+    fontSize: 16,
+    fontWeight: '600',
     flex: 1,
-    marginRight: 12,
-  },
-  categoryBadge: {
-    flexDirection: 'row',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    marginBottom: 12,
-    alignItems: 'center',
-    gap: 6,
-  },
-  categoryEmoji: {
-    fontSize: 14,
-  },
-  categoryText: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  reminderTitle: {
-    fontSize: 19,
-    fontWeight: '700',
-    color: '#1C1C1E',
-    marginBottom: 8,
-    lineHeight: 26,
-    letterSpacing: -0.3,
-  },
-  reminderNotes: {
-    fontSize: 15,
-    color: '#636366',
-    marginBottom: 12,
-    lineHeight: 22,
-  },
-  timeContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 8,
-  },
-  timeChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  timeText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  tapToEdit: {
-    fontSize: 13,
-    color: '#8E8E93',
-    fontStyle: 'italic',
-  },
-  deleteButton: {
-    padding: 8,
   },
   deleteIcon: {
-    fontSize: 26,
-  },
-  emptyContainer: {
-    padding: 48,
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  emptyIcon: {
-    fontSize: 52,
-    marginBottom: 18,
-  },
-  emptyText: {
+    color: '#EF4444',
     fontSize: 20,
     fontWeight: '700',
-    color: '#1C1C1E',
-    marginBottom: 8,
+    marginLeft: 8,
   },
-  emptySubtext: {
-    fontSize: 16,
-    color: '#8E8E93',
+  cardNotes: {
+    color: '#94A3B8',
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cardStatus: {
+    color: '#00F0FF',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  editHint: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    padding: 20,
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    paddingTop: 24,
-    paddingBottom: 40,
-    maxHeight: '80%',
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#00F0FF',
+    borderRadius: 4,
+    padding: 20,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 24,
     marginBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+    paddingBottom: 12,
   },
   modalTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: '#1C1C1E',
+    color: '#00F0FF',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   modalClose: {
-    fontSize: 28,
-    color: '#8E8E93',
-    fontWeight: '400',
+    color: '#EF4444',
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  modalBody: {
-    paddingHorizontal: 24,
+  inputGroup: {
+    marginBottom: 16,
   },
-  modalField: {
+  inputLabel: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 8,
+    letterSpacing: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  modalInput: {
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 4,
+    color: '#F8FAFC',
+    padding: 12,
+    fontSize: 14,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  dataRow: {
     marginBottom: 24,
   },
-  modalLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#8E8E93',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  modalValue: {
-    fontSize: 18,
-    color: '#1C1C1E',
-    lineHeight: 26,
-  },
-  modalCategory: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  modalCloseButton: {
-    marginHorizontal: 24,
-    marginTop: 16,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#667EEA',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  modalCloseGradient: {
-    padding: 18,
-    alignItems: 'center',
-  },
-  modalCloseText: {
-    fontSize: 18,
+  dataLabel: {
+    color: '#64748B',
+    fontSize: 10,
     fontWeight: '700',
-    color: '#FFFFFF',
+    marginBottom: 4,
+    letterSpacing: 1,
+  },
+  dataValue: {
+    color: '#475569',
+    fontSize: 14,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  saveButton: {
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: '#00F0FF',
+    padding: 16,
+    alignItems: 'center',
+    borderRadius: 4,
+  },
+  saveButtonText: {
+    color: '#00F0FF',
+    fontWeight: '700',
+    fontSize: 14,
+    letterSpacing: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  deleteButton: {
+    marginTop: 12,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    padding: 16,
+    alignItems: 'center',
+    borderRadius: 4,
+  },
+  deleteButtonText: {
+    color: '#EF4444',
+    fontWeight: '700',
+    fontSize: 14,
+    letterSpacing: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
 });
